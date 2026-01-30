@@ -28,6 +28,8 @@ interface CardNoteSettings {
 	dragSymbol: string,
 	dragSymbolSize?: number,
 	defaultFolder: string,
+	createToSouceFileFolder: boolean,
+	createToCanvasFolder: boolean,
 	columnWidth: number,
 	rowHeight: number,
 	autoLink: boolean,
@@ -49,6 +51,8 @@ const DEFAULT_SETTINGS: CardNoteSettings = {
 	dragSymbol: "💔",
 	dragSymbolSize: 18,
 	defaultFolder: "",
+	createToSouceFileFolder: false,
+	createToCanvasFolder: false,
 	columnWidth: 250,
 	rowHeight: 250,
 	autoLink: false,
@@ -223,8 +227,41 @@ export default class CardNote extends Plugin {
 					});
 				return checkCallback(checking);
 			},
+		});
 
+		this.addCommand({
+			id: 'create-to-specified-folder',
+			name: 'Create New File in Default Folder',
+			checkCallback: this.checkCallbackFactory(
+				() => this.settings.createToCanvasFolder || this.settings.createToSouceFileFolder,
+				() => {
+					this.settings.createToCanvasFolder = false;
+					this.settings.createToSouceFileFolder = false;
+				}
+			)
+		});
 
+		this.addCommand({
+			id: 'create-to-source-file-folder',
+			name: 'Create New File in Source File Folder',
+			checkCallback: this.checkCallbackFactory(
+				() => !this.settings.createToSouceFileFolder,
+				() => {
+					this.settings.createToSouceFileFolder = true;
+					this.settings.createToCanvasFolder = false;
+				}
+			)
+		});
+		this.addCommand({
+			id: 'create-to-canvas-folder',
+			name: 'Create New File in Canvas File Folder',
+			checkCallback: this.checkCallbackFactory(
+				() => !this.settings.createToCanvasFolder,
+				() => {
+					this.settings.createToCanvasFolder = true;
+					this.settings.createToSouceFileFolder = false;
+				}
+			)
 		});
 
 	}

@@ -145,8 +145,8 @@ function getLinkBlocks(select: UserSelection & { textOffset: number }, file: TFi
 
 type ReNameConfig = Omit<FileNameModelConfig, "onSubmit">;
 
-async function userAction(plugin: CardNote, section: Section, selected: UserSelection) {
-	const folderPath = plugin.settings.defaultFolder;
+async function userAction(plugin: CardNote, section: Section, selected: UserSelection, defaultFolder: () => string) {
+	const folderPath = defaultFolder();//plugin.settings.defaultFolder;
 	const getUserRename = (config: ReNameConfig) => {
 		return new Promise<(UserAction) | Break>(resolve => {
 			const onSubmit = (action: UserAction) => {
@@ -586,11 +586,25 @@ export const dragExtension = (plugin: CardNote) => {
 		let source: FileEditor | undefined;
 		let listener: { reset: () => void };
 		const handleDrop = async (e: DragEvent) => {
+			const drawView = plugin.getDropView(e);
+
+			const getDefaultFolder = () => {
+				const sourceFile = getFile(source);
+				const canvasFile = drawView?.file;
+				const folderPath =
+					plugin.settings.createToSouceFileFolder
+						? sourceFile?.parent?.path
+						: plugin.settings.createToCanvasFolder
+							? canvasFile?.parent?.path
+							: plugin.settings.defaultFolder;
+				return folderPath ?? plugin.settings.defaultFolder;
+			};
+
 			const createFileAndDraw = async (
 				whiteboard: WhiteBoard,
 			) => {
 				const section = info.type === 'line' && info.section ? info.section : getSection(source, info, plugin);
-				const action = await userAction(plugin, section, info);
+				const action = await userAction(plugin, section, info, getDefaultFolder);
 				if (!isBreak(action) && action.type !== 'cancel') {
 					extractSelect(
 						action,
@@ -602,7 +616,6 @@ export const dragExtension = (plugin: CardNote) => {
 					);
 				}
 			};
-			const drawView = plugin.getDropView(e);
 			if (isExcalidrawView(drawView)) {
 				createFileAndDraw(
 					{
