@@ -1,6 +1,7 @@
-import type { BlockCache, CacheItem, HeadingCache, LinkCache, OpenViewState, } from "obsidian"
+import type { BlockCache, CacheItem, HeadingCache, LinkCache, OpenViewState, WorkspaceLeaf, View } from "obsidian"
 import {
 	App,
+	FileView,
 	MarkdownRenderer,
 	Plugin,
 	PluginSettingTab,
@@ -12,7 +13,7 @@ import {
 } from "obsidian";
 import type { LinkFilePath, LinkPath } from "src/dragUpdate";
 import { dragExtension } from "src/dragUpdate";
-import { getOffset, isCanvasEditorNode, isObsidianCanvasView } from "src/adapters/obsidian";
+import { getOffset, isCanvasEditorNode, isCanvasFileNode, isObsidianCanvasView, OBSIDIAN_CANVAS } from "src/adapters/obsidian";
 import type { FileInfo, LinkInfo, RequiredProperties, } from "src/utility";
 import { FILENAMEREPLACE, HEADINGREPLACE, LinkToChanges, createFullPath } from "src/utility";
 import type { CanvasData, CanvasFileData, AllCanvasNodeData } from "obsidian/canvas";
@@ -21,6 +22,8 @@ import { CardSearchView, VIEW_TYPE_CARDNOTESEARCH } from "src/view/cardSearchVie
 import { LinkSettingModel } from "src/ui/linkSettings";
 import type { Extension } from "@codemirror/state";
 import type { EditorView } from "codemirror";
+import { NodePreviewView, VIEW_TYPE_NODEPREVIEW } from "src/view/nodePreviewView";
+import type { CanvasView } from "src/adapters/obsidian/types/canvas";
 
 
 
@@ -45,6 +48,8 @@ interface CardNoteSettings {
 	showSearchDetail: boolean,
 	include: string,
 	exclude: string,
+	autoPreview: boolean,
+	lastPreviewIndex?: number,
 }
 
 const DEFAULT_SETTINGS: CardNoteSettings = {
@@ -55,7 +60,7 @@ const DEFAULT_SETTINGS: CardNoteSettings = {
 	createToCanvasFolder: false,
 	columnWidth: 250,
 	rowHeight: 250,
-	autoLink: false,
+	autoLink: true,
 	arrowTo: 'end',
 	showDragSymbol: true,
 	fitContentHeight: true,
@@ -67,12 +72,16 @@ const DEFAULT_SETTINGS: CardNoteSettings = {
 	showSearchDetail: false,
 	include: "",
 	exclude: "",
+	autoPreview: false,
+	lastPreviewIndex: undefined,
 };
 export default class CardNote extends Plugin {
 	settings: CardNoteSettings = DEFAULT_SETTINGS;
 	hotReloadExtensions: Extension = [];
 	pluginExtensions: Extension = [];
 	toggleDragSymbol: (view: EditorView, show: boolean) => void = () => { };
+	applyAutoPreviewNode: (leaf: WorkspaceLeaf | null) => void = () => { };
+	autoPreviewAttribute = 'node-preview-leaf'
 	async onload() {
 		await this.loadSettings();
 		const { extensions, toggleDragSymbol } = dragExtension(this);
@@ -85,12 +94,104 @@ export default class CardNote extends Plugin {
 			VIEW_TYPE_CARDNOTESEARCH,
 			(leaf) => new CardSearchView(leaf, this)
 		);
+
+		this.registerView(
+			VIEW_TYPE_NODEPREVIEW,
+			(leaf) => new NodePreviewView(leaf, this)
+		)
 		this.addRibbonIcon("scan-search",
 			"Search Notes",
 			() => this.activateView());
 		this.addCommands();
 		// This adds a settings tab so the user can configure various aspects of the plugin
 		this.addSettingTab(new CardNoteTab(this.app, this));
+
+		this.applyAutoPreviewNode = this.createOpenCanvasNodeFileEvent(this);
+
+		this.registerEvent(
+			this.app.workspace.on('quit', (tasks) => {
+				tasks.add(async () => {
+					let i = -1;
+					this.app.workspace.iterateAllLeaves(leaf => {
+						i = i + 1;
+						const isPreviewLeaf = leaf.containerEl.getAttribute(this.autoPreviewAttribute)
+						if (isPreviewLeaf !== null) {
+							this.settings.lastPreviewIndex = i;
+							this.saveSettings();
+						};
+					})
+					if (i === -1) {
+						this.settings.lastPreviewIndex = undefined;
+						this.saveSettings();
+					}
+				})
+			})
+		);
+
+		if (this.settings.autoPreview && this.settings.lastPreviewIndex !== undefined) {
+			this.settings.autoPreview = false;//disable auto preview first to prevent open file when reload layout is not ready.
+			this.app.workspace.onLayoutReady(() => {
+				let i = 0;
+				this.app.workspace.iterateAllLeaves((leaf) => {
+					if (i === this.settings.lastPreviewIndex)
+						leaf.containerEl.setAttribute(this.autoPreviewAttribute, 'true');
+					i++;
+				});
+				this.settings.autoPreview = true;
+				this.app.workspace.iterateAllLeaves(this.applyAutoPreviewNode);
+			});
+		}
+
+		this.registerEvent(
+			this.app.workspace.on('active-leaf-change', this.applyAutoPreviewNode)
+		);
+
+	}
+
+	createOpenCanvasNodeFileEvent(plugin: CardNote) {
+		const getPreviewLeaf = async () => {
+			let previeLeaf: WorkspaceLeaf | null = null;
+			plugin.app.workspace.iterateAllLeaves(leaf => {
+				const isPreviewLeaf = leaf.containerEl.getAttribute(this.autoPreviewAttribute)
+				if (isPreviewLeaf !== null)
+					previeLeaf = leaf;
+			});
+
+			const createNew = async () => {
+				const newLeaf = plugin.app.workspace.getLeaf('split');
+				newLeaf.containerEl.setAttribute(this.autoPreviewAttribute, 'true');
+				return newLeaf
+			}
+			const leaf = previeLeaf ?? await createNew();
+			return leaf
+		}
+
+		let activeView: CanvasView | undefined = undefined;
+		function openPreviewLeaf() {
+			if (!plugin.settings.autoPreview) return;
+			requestAnimationFrame(async () => {
+				const canvas = activeView!.canvas;
+				const selectedNodes = canvas.selection;
+				if (selectedNodes.size !== 1) return;
+				const [node] = selectedNodes;
+				if (!isCanvasFileNode(node)) return;
+				//const unpinedLeaf = plugin.app.workspace.getLeaf(false);//如果沒找到，會使用 tab 創建一個新的 leaf
+				const previewLeaf = await getPreviewLeaf();
+				previewLeaf.openFile(node.file);
+			});
+		}
+
+		return (leaf: WorkspaceLeaf | null) => {
+			if (leaf === null || !plugin.settings.autoPreview) return;
+			const view = leaf.view;
+			console.log('view is file view', view instanceof FileView, view)
+			this.app.vault.getFileByPath('test')
+			// this.app.workspace.createLeafBySplit
+			if (view instanceof TextFileView && isObsidianCanvasView(view)) {
+				activeView = view;
+				view.containerEl.addEventListener('click', openPreviewLeaf);
+			}
+		}
 	}
 	addCommands() {
 		this.addCommand({
@@ -260,6 +361,31 @@ export default class CardNote extends Plugin {
 				() => {
 					this.settings.createToCanvasFolder = true;
 					this.settings.createToSouceFileFolder = false;
+				}
+			)
+		});
+
+		this.addCommand({
+			id: 'enable-auto-preview',
+			name: 'Enable Auto Preview',
+			checkCallback: this.checkCallbackFactory(
+				() => !this.settings.autoPreview,
+				() => {
+					this.settings.autoPreview = true;
+					this.app.workspace.iterateAllLeaves(leaf => {
+						this.applyAutoPreviewNode(leaf);
+					});
+				}
+			)
+		});
+
+		this.addCommand({
+			id: 'disable-auto-preview',
+			name: 'Disable Auto Preview',
+			checkCallback: this.checkCallbackFactory(
+				() => this.settings.autoPreview,
+				() => {
+					this.settings.autoPreview = false;
 				}
 			)
 		});
