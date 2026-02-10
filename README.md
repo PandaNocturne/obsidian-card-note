@@ -24,12 +24,15 @@ This tool help you create a new note and insert its link into the canvas. Let yo
 
   e.g. heading, paragraph, bullet list ...
 
+- Automatically open the file in a split view when you click the node on the canvas.
+
 # Commands
 - Enable/Disable Auto Link: toggle auto create link feature.
 - Arrow to * : When auto link is enable, select which arrow style to use for the link.
 - Set Default Label: Set the label for link created automatically.
 - Show/Hide Drag Symbol: Show or hide the drag symbol.
 - Create New File in Default/Source/Canvas Folder: Choose which folder you want to save the extracted content.
+- Enable/Disable Auto Preview: When enabled, clicking a node on the canvas automatically opens the file in a split view.
 
 
 
