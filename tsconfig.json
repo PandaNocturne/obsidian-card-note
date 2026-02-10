@@ -8,7 +8,7 @@
     "baseUrl": ".",
     "inlineSources": true,
     "module": "ESNext",
-    "target": "ES6",
+    "target": "esnext",
     "allowJs": true,
     "noImplicitAny": true,
     "moduleResolution": "node",
