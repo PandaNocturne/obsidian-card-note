@@ -1,7 +1,6 @@
-import type { BlockCache, CacheItem, HeadingCache, LinkCache, OpenViewState, WorkspaceLeaf, View } from "obsidian"
+import type { BlockCache, CacheItem, HeadingCache, LinkCache, OpenViewState, WorkspaceLeaf } from "obsidian"
 import {
 	App,
-	FileView,
 	MarkdownRenderer,
 	Plugin,
 	PluginSettingTab,
@@ -13,7 +12,7 @@ import {
 } from "obsidian";
 import type { LinkFilePath, LinkPath } from "src/dragUpdate";
 import { dragExtension } from "src/dragUpdate";
-import { getOffset, isCanvasEditorNode, isCanvasFileNode, isObsidianCanvasView, OBSIDIAN_CANVAS } from "src/adapters/obsidian";
+import { getOffset, isCanvasEditorNode, isCanvasFileNode, isFileView, isObsidianCanvasView, OBSIDIAN_CANVAS } from "src/adapters/obsidian";
 import type { FileInfo, LinkInfo, RequiredProperties, } from "src/utility";
 import { FILENAMEREPLACE, HEADINGREPLACE, LinkToChanges, createFullPath } from "src/utility";
 import type { CanvasData, CanvasFileData, AllCanvasNodeData } from "obsidian/canvas";
@@ -22,7 +21,6 @@ import { CardSearchView, VIEW_TYPE_CARDNOTESEARCH } from "src/view/cardSearchVie
 import { LinkSettingModel } from "src/ui/linkSettings";
 import type { Extension } from "@codemirror/state";
 import type { EditorView } from "codemirror";
-import { NodePreviewView, VIEW_TYPE_NODEPREVIEW } from "src/view/nodePreviewView";
 import type { CanvasView } from "src/adapters/obsidian/types/canvas";
 
 
@@ -50,6 +48,7 @@ interface CardNoteSettings {
 	exclude: string,
 	autoPreview: boolean,
 	lastPreviewIndex?: number,
+	previewNodeInfo?: [string, string, string],//[node id,file path,canvas path]
 }
 
 const DEFAULT_SETTINGS: CardNoteSettings = {
@@ -74,6 +73,7 @@ const DEFAULT_SETTINGS: CardNoteSettings = {
 	exclude: "",
 	autoPreview: false,
 	lastPreviewIndex: undefined,
+	previewNodeInfo: undefined,
 };
 export default class CardNote extends Plugin {
 	settings: CardNoteSettings = DEFAULT_SETTINGS;
@@ -81,7 +81,7 @@ export default class CardNote extends Plugin {
 	pluginExtensions: Extension = [];
 	toggleDragSymbol: (view: EditorView, show: boolean) => void = () => { };
 	applyAutoPreviewNode: (leaf: WorkspaceLeaf | null) => void = () => { };
-	autoPreviewAttribute = 'node-preview-leaf'
+	autoPreviewAttribute = 'cardnote-preview-leaf'
 	async onload() {
 		await this.loadSettings();
 		const { extensions, toggleDragSymbol } = dragExtension(this);
@@ -95,10 +95,6 @@ export default class CardNote extends Plugin {
 			(leaf) => new CardSearchView(leaf, this)
 		);
 
-		this.registerView(
-			VIEW_TYPE_NODEPREVIEW,
-			(leaf) => new NodePreviewView(leaf, this)
-		)
 		this.addRibbonIcon("scan-search",
 			"Search Notes",
 			() => this.activateView());
@@ -110,19 +106,23 @@ export default class CardNote extends Plugin {
 
 		this.registerEvent(
 			this.app.workspace.on('quit', (tasks) => {
+				if (!this.settings.autoPreview) return;
 				tasks.add(async () => {
-					let i = -1;
+					const leaves: WorkspaceLeaf[] = []
 					this.app.workspace.iterateAllLeaves(leaf => {
-						i = i + 1;
-						const isPreviewLeaf = leaf.containerEl.getAttribute(this.autoPreviewAttribute)
-						if (isPreviewLeaf !== null) {
-							this.settings.lastPreviewIndex = i;
-							this.saveSettings();
-						};
+						leaves.push(leaf);
 					})
-					if (i === -1) {
-						this.settings.lastPreviewIndex = undefined;
-						this.saveSettings();
+					let i = -1;
+					this.settings.lastPreviewIndex = undefined;
+					for (let leaf of leaves) {
+						i = i + 1;
+						const previewNodeInfo = leaf.containerEl.getAttribute(this.autoPreviewAttribute)
+						if (previewNodeInfo !== null) {
+							this.settings.lastPreviewIndex = i;
+							this.settings.previewNodeInfo = JSON.parse(decodeURI(previewNodeInfo));
+							this.saveSettings();
+							break;
+						};
 					}
 				})
 			})
@@ -133,8 +133,13 @@ export default class CardNote extends Plugin {
 			this.app.workspace.onLayoutReady(() => {
 				let i = 0;
 				this.app.workspace.iterateAllLeaves((leaf) => {
-					if (i === this.settings.lastPreviewIndex)
-						leaf.containerEl.setAttribute(this.autoPreviewAttribute, 'true');
+					if (i === this.settings.lastPreviewIndex
+						&& this.settings.previewNodeInfo !== undefined
+						&& isFileView(leaf.view)
+						&& leaf.view.file?.path === this.settings.previewNodeInfo[1]
+					) {
+						leaf.containerEl.setAttribute(this.autoPreviewAttribute, encodeURI(JSON.stringify(this.settings.previewNodeInfo)));
+					}
 					i++;
 				});
 				this.settings.autoPreview = true;
@@ -159,7 +164,6 @@ export default class CardNote extends Plugin {
 
 			const createNew = async () => {
 				const newLeaf = plugin.app.workspace.getLeaf('split');
-				newLeaf.containerEl.setAttribute(this.autoPreviewAttribute, 'true');
 				return newLeaf
 			}
 			const leaf = previeLeaf ?? await createNew();
@@ -176,23 +180,26 @@ export default class CardNote extends Plugin {
 				const [node] = selectedNodes;
 				if (!isCanvasFileNode(node)) return;
 				//const unpinedLeaf = plugin.app.workspace.getLeaf(false);//如果沒找到，會使用 tab 創建一個新的 leaf
+				plugin.settings.previewNodeInfo = [node.id, node.file.path, activeView?.file?.path ?? ''];
 				const previewLeaf = await getPreviewLeaf();
-				previewLeaf.openFile(node.file);
+				previewLeaf.containerEl.setAttribute(plugin.autoPreviewAttribute, encodeURI(JSON.stringify(plugin.settings.previewNodeInfo)));
+				previewLeaf.openLinkText(node.file.path + node.subpath, "");
+				plugin.app.workspace.setActiveLeaf(previewLeaf);
 			});
 		}
 
 		return (leaf: WorkspaceLeaf | null) => {
 			if (leaf === null || !plugin.settings.autoPreview) return;
+
 			const view = leaf.view;
-			console.log('view is file view', view instanceof FileView, view)
-			this.app.vault.getFileByPath('test')
-			// this.app.workspace.createLeafBySplit
+
 			if (view instanceof TextFileView && isObsidianCanvasView(view)) {
 				activeView = view;
 				view.containerEl.addEventListener('click', openPreviewLeaf);
 			}
 		}
 	}
+
 	addCommands() {
 		this.addCommand({
 			id: 'open-search-view',
@@ -424,7 +431,10 @@ export default class CardNote extends Plugin {
 		workspace.revealLeaf(leaf!)
 
 	}
-	onunload() { }
+	onunload() {
+		this.settings.lastPreviewIndex = undefined;
+		this.saveSettings();
+	}
 
 	async loadSettings() {
 		this.settings = Object.assign(
@@ -497,6 +507,7 @@ export default class CardNote extends Plugin {
 			}
 
 		}
+
 		return { fileEditor: this.app.workspace.activeEditor, offset: 0 }
 	}
 

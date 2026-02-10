@@ -1,10 +1,13 @@
-import { TextFileView, type MarkdownFileInfo } from "obsidian";
+import { TextFileView, View, FileView, type MarkdownFileInfo } from "obsidian";
 import type { CanvasFileNode, CanvasNode, CanvasTextNode, CanvasView } from "./types/canvas";
 import type { ObsidianCanvasNode } from "obsidian-excalidraw-plugin/lib/utils/CanvasNodeFactory";
 
 
 export const OBSIDIAN_CANVAS = "canvas";
 
+export function isFileView(view?: View): view is FileView {
+	return view ? 'file' in view : false
+}
 export function isObsidianCanvasView(view?: TextFileView): view is CanvasView {
 	return view?.getViewType() === OBSIDIAN_CANVAS;
 }

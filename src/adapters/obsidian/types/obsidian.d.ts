@@ -30,8 +30,8 @@ declare module "obsidian" {
     };
   }
   interface Vault {
-	checkPath(path: string): null;
-	getConfig(option: "useMarkdownLinks"): boolean;
+    checkPath(path: string): null;
+    getConfig(option: "useMarkdownLinks"): boolean;
   }
 
   interface FileManager {
@@ -40,25 +40,25 @@ declare module "obsidian" {
       callback: (FrontMatterCache: any) => void,
       option?: DataWriteOptions
     ) => Promise<void>;
-	createNewMarkdownFile: (folder: TFolder, name: string) => Promise<TFile>;
-	/**
-	 * 
-	 * @param fn 
-	 * @returns 
-	 */
-	iterateAllRefs: (fn: (fileName: string, cache: LinkCache) => void) => void
-	updateInternalLinks: (changes: Changes) => void
-	linkUpdaters: {
-		canvas: {
-			canvas: {
-				index: {
-					getAll: () => Record<string, { caches: Record<string, any>[], embeds: { file?: string, subpath?: string }[] }>
-				}			
-			}
-			//subpath behind #
-			renameSubpath: (file: TFile, oldSubpath: string, newSubpath: string) => any
-		}
-	}
+    createNewMarkdownFile: (folder: TFolder, name: string) => Promise<TFile>;
+    /**
+     * 
+     * @param fn 
+     * @returns 
+     */
+    iterateAllRefs: (fn: (fileName: string, cache: LinkCache) => void) => void
+    updateInternalLinks: (changes: Changes) => void
+    linkUpdaters: {
+      canvas: {
+        canvas: {
+          index: {
+            getAll: () => Record<string, { caches: Record<string, any>[], embeds: { file?: string, subpath?: string }[] }>
+          }
+        }
+        //subpath behind #
+        renameSubpath: (file: TFile, oldSubpath: string, newSubpath: string) => any
+      }
+    }
   }
 
   interface MetadataCache {
@@ -126,11 +126,11 @@ declare module "obsidian" {
       item: WorkspaceItem | WorkspaceItem[],
       callback: (item: WorkspaceLeaf) => boolean | void
     ): boolean;
-	getDropLocation(event: MouseEvent): {
-		children: {
-			tabHeaderEl:HTMLElement,
-			view:TextFileView
-		}[],
+    getDropLocation(event: MouseEvent): {
+      children: {
+        tabHeaderEl: HTMLElement,
+        view: TextFileView
+      }[],
       target: WorkspaceItem;
       sidedock: boolean;
     };
@@ -144,12 +144,16 @@ declare module "obsidian" {
     floatingSplit: WorkspaceSplit;
   }
   interface WorkspaceSplit {
-	  children: SplitItem[];
+    children: SplitItem[];
   }
   interface WorkspaceLeaf {
     containerEl: HTMLElement;
     tabHeaderInnerTitleEl: HTMLElement;
     tabHeaderInnerIconEl: HTMLElement;
+    /**
+     * @public
+     */
+    openLinkText(linktext: string, sourcePath: string, openViewState?: OpenViewState): Promise<void>;
   }
   interface Editor {
     cm: EditorView;
@@ -175,41 +179,41 @@ declare module "obsidian" {
   }
   interface EditorSuggest<T> {
     suggestEl: HTMLElement;
-	}
-	interface SplitItem {
-		id: string,
-		containerEl: HTMLElement,
-		doc?: Document,
+  }
+  interface SplitItem {
+    id: string,
+    containerEl: HTMLElement,
+    doc?: Document,
 
-	}
-	interface SectionCache {
-		type: 'heading' | 'list' | 'paragraph' | 'blockquote' | string;
-	}
+  }
+  interface SectionCache {
+    type: 'heading' | 'list' | 'paragraph' | 'blockquote' | string;
+  }
 
-	interface ChangeInfo {
-		/**
-		 * new link text set to editor
-		 */
-		change: string,
-		/**
-		 * old link info
-		 */
-		reference: LinkCache,
-		/**
-		 * file contains this link
-		 */
-		sourcePath: string,
-	}
-	interface Changes {
-		data: Record<string, ChangeInfo[]>
-		add: (key: string, value: ChangeInfo) => void,
-		remove: (key: string, value: ChangeInfo) => void,
-		removeKey: (key: string) => void,
-		get: (key: string) => ChangeInfo[],
-		keys: () => string[],
-		clear: (key: string) => void,
-		clearAll: () => void,
-		contains: (key: string, value: ChangeInfo) => boolean,
-		count: () => number,
-	}
+  interface ChangeInfo {
+    /**
+     * new link text set to editor
+     */
+    change: string,
+    /**
+     * old link info
+     */
+    reference: LinkCache,
+    /**
+     * file contains this link
+     */
+    sourcePath: string,
+  }
+  interface Changes {
+    data: Record<string, ChangeInfo[]>
+    add: (key: string, value: ChangeInfo) => void,
+    remove: (key: string, value: ChangeInfo) => void,
+    removeKey: (key: string) => void,
+    get: (key: string) => ChangeInfo[],
+    keys: () => string[],
+    clear: (key: string) => void,
+    clearAll: () => void,
+    contains: (key: string, value: ChangeInfo) => boolean,
+    count: () => number,
+  }
 }
